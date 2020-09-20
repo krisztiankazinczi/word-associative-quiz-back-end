@@ -9,8 +9,8 @@ dotenv.config({ path: "./config.env" });
 
 //Security middlewares
 const cors = require("cors");
-const rateLimit = require('express-rate-limit');
-const helmet = require('helmet');
+const rateLimit = require("express-rate-limit");
+const helmet = require("helmet");
 
 const port = process.env.PORT || 3030;
 
@@ -46,10 +46,10 @@ app.use(helmet());
 
 const limiter = rateLimit({
   max: 30,
-  windowMs: 60 * 60 * 1000,
-  message: 'Too many requests from this IP, please try again in an hour'
+  windowMs: 30 * 60 * 1000,
+  message: "Too many requests from this IP, please try again in an hour",
 });
-app.use('/api', limiter);
+app.use("/api", limiter);
 
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: true }));
@@ -64,17 +64,25 @@ app.post("/api/v1/newSingleGame", async (req, res) => {
   res.status(200).json({ quizlist: data.quizlist, gameMode: "singlePlayer" });
 });
 
-// app.get("/api/v1/getRoomID", cors(corsOptions), (req, res) => {
-//   res.json(uuidv4());
-// });
-
 app.get("/api/v1/getRoomID", (req, res) => {
   res.json(uuidv4());
 });
 
-// SOCKET CONNECTIONS
+// delete the memory of roomIds with game data
+app.post("/api/v1/deleteGamesFromMemory", (req, res) => {
+  const { secretPassword } = req.body;
 
-const games = {};
+  if (secretPassword === process.env.SECRET_PASSWORD) {
+    games = {};
+  }
+
+  res.status(204)
+})
+
+let games = {};
+
+
+// SOCKET CONNECTIONS
 
 io.on("connection", (socket) => {
   socket.on("join-room", (roomId, username) => {
@@ -102,6 +110,7 @@ io.on("connection", (socket) => {
     games[roomId].timeLimit = timeLimit;
     games[roomId].area = area;
     games[roomId].level = level;
+    games[roomId].active = true;
     // before the game starts there is a 4sec countDown
     const timeLimitWithWaitingTime = timeLimit + 4;
     //send all the questions to the participants
@@ -120,6 +129,7 @@ io.on("connection", (socket) => {
     setTimeout(() => {
       if (!games[roomId].everyoneFinished) {
         // if everyone finished the game, the results won't be sent after 1 min
+        games[roomId].active = false;
         const formattedAnswers = rearrangeResultsObject(games[roomId].players);
         socket.to(roomId).broadcast.emit("quiz-finished", formattedAnswers);
       }
@@ -141,6 +151,7 @@ io.on("connection", (socket) => {
 
     if (everyoneFinished) {
       games[roomId].everyoneFinished = true;
+      games[roomId].active = false;
       const formattedAnswers = rearrangeResultsObject(games[roomId].players);
       socket.to(roomId).broadcast.emit("quiz-finished", formattedAnswers);
     }
@@ -180,7 +191,6 @@ const rearrangeResultsObject = (result) => {
    *    username2: { answers: [...]}
    * }
    */
-  console.log(result);
   const answers = [];
   for (let i = 0; i < 10; i++) {
     const questionIndex = {};
