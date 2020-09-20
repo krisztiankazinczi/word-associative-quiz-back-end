@@ -3,23 +3,55 @@ const { v4: uuidv4 } = require("uuid");
 const app = express();
 const server = require("http").Server(app);
 const io = require("socket.io")(server);
-const cors = require("cors");
 const fetch = require("node-fetch");
 const dotenv = require("dotenv");
 dotenv.config({ path: "./config.env" });
 
-const clientURL = "http://localhost:3000/newGame";
+//Security middlewares
+const cors = require("cors");
+const rateLimit = require('express-rate-limit');
+const helmet = require('helmet');
 
 const port = process.env.PORT || 3030;
 
+const whitelist = process.env.DEVELOPMENT_MODE
+  ? ["https://associative-quiz.herokuapp.com", "http://localhost:3000"]
+  : ["https://associative-quiz.herokuapp.com"];
+
 const corsOptions = {
-  origin: clientURL,
+  origin: whitelist,
 };
 
-app.use(cors());
+// app.use(
+//   cors({
+//     origin: function (origin, callback) {
+//       // allow requests with no origin
+//       // (like mobile apps or curl requests)
+//       if (!origin) return callback(null, true);
+//       if (whitelist.indexOf(origin) === -1) {
+//         var msg =
+//           "The CORS policy for this site does not " +
+//           "allow access from the specified Origin.";
+//         return callback(new Error(msg), false);
+//       }
+//       return callback(null, true);
+//     },
+//   })
+// );
 
-// app.use(express.json({ limit: "10kb" }));
-app.use(express.json());
+// middlewares
+app.use(cors(corsOptions));
+
+app.use(helmet());
+
+const limiter = rateLimit({
+  max: 30,
+  windowMs: 60 * 60 * 1000,
+  message: 'Too many requests from this IP, please try again in an hour'
+});
+app.use('/api', limiter);
+
+app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: true }));
 
 //API ROUTES
@@ -71,7 +103,7 @@ io.on("connection", (socket) => {
     games[roomId].area = area;
     games[roomId].level = level;
     // before the game starts there is a 4sec countDown
-    const timeLimitWithWaitingTime = timeLimit + 4; 
+    const timeLimitWithWaitingTime = timeLimit + 4;
     //send all the questions to the participants
     socket
       .to(roomId)
